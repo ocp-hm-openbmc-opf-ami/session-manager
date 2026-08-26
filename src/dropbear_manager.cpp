@@ -9,6 +9,7 @@
 #include <csignal>
 #include <iostream>
 #include <map>
+#include <mutex>
 #include <regex>
 #include <string>
 #include <thread>
@@ -33,6 +34,10 @@ struct SessionInfo
 };
 
 std::map<std::string, SessionInfo> serviceSessions;
+// Guards serviceSessions, shared between the monitorTriggers thread
+// (register/deregisterService) and the monitorSshSessionInfo thread
+// (compareSessionInfos).
+std::mutex serviceSessionsMutex;
 std::vector<SessionInfo> sshSessionInfoProperty;
 
 constexpr int monitorTriggersDelay = 3;
@@ -70,7 +75,6 @@ uint8_t mapPrivilegeToLevel(const std::string& privilege)
 }
 
 using VariantType = std::variant<bool, std::string, std::vector<std::string>>;
-std::map<std::string, VariantType> userInfoDetailes;
 
 void deregisterService(const std::string& serviceName);
 
@@ -183,6 +187,7 @@ SessionInfo getServiceSessionInfo(const std::string& serviceName)
                                                userMgrIfc, "GetUserInfo");
         getUserInfo.append(sessionInfo.username, serverIPadd);
         auto userInfo = bus.call(getUserInfo);
+        std::map<std::string, VariantType> userInfoDetailes;
         userInfo.read(userInfoDetailes);
 
         auto it = userInfoDetailes.find("UserPrivilege");
@@ -256,12 +261,15 @@ void compareSessionInfos(SshSessionInfoType& sshSessionInfos)
         if (std::find(sessionInfoList.begin(), sessionInfoList.end(), entry) ==
             sessionInfoList.end())
         {
-            for (const auto& serviceEntry : serviceSessions)
             {
-                if (serviceEntry.second.sessionId == std::get<0>(entry))
+                std::lock_guard<std::mutex> lock(serviceSessionsMutex);
+                for (const auto& serviceEntry : serviceSessions)
                 {
-                    valid = true;
-                    serviceName = serviceEntry.first;
+                    if (serviceEntry.second.sessionId == std::get<0>(entry))
+                    {
+                        valid = true;
+                        serviceName = serviceEntry.first;
+                    }
                 }
             }
             if (!valid)
@@ -302,12 +310,20 @@ void compareSessionInfos(SshSessionInfoType& sshSessionInfos)
         if (std::find(sshSessionInfos.begin(), sshSessionInfos.end(), entry) ==
             sshSessionInfos.end())
         {
-            for (const auto& serviceEntry : serviceSessions)
+            std::vector<std::string> servicesToStop;
             {
-                if (serviceEntry.second.sessionId == std::get<0>(entry))
+                std::lock_guard<std::mutex> lock(serviceSessionsMutex);
+                for (const auto& serviceEntry : serviceSessions)
                 {
-                    stopService(serviceEntry.first);
+                    if (serviceEntry.second.sessionId == std::get<0>(entry))
+                    {
+                        servicesToStop.push_back(serviceEntry.first);
+                    }
                 }
+            }
+            for (const auto& serviceToStop : servicesToStop)
+            {
+                stopService(serviceToStop);
             }
         }
     }
@@ -354,11 +370,14 @@ void registerService(const std::string& serviceName)
 {
     std::cout << "Registering service: " << serviceName << std::endl;
 
-    if (serviceSessions.find(serviceName) != serviceSessions.end())
     {
-        std::cout << "Service " << serviceName << " is already registered."
-                  << std::endl;
-        return;
+        std::lock_guard<std::mutex> lock(serviceSessionsMutex);
+        if (serviceSessions.find(serviceName) != serviceSessions.end())
+        {
+            std::cout << "Service " << serviceName
+                      << " is already registered." << std::endl;
+            return;
+        }
     }
 
     SessionInfo sessionInfo = getServiceSessionInfo(serviceName);
@@ -411,7 +430,10 @@ void registerService(const std::string& serviceName)
                     << serviceName << std::endl;
             }
 
-            serviceSessions[serviceName] = sessionInfo;
+            {
+                std::lock_guard<std::mutex> lock(serviceSessionsMutex);
+                serviceSessions[serviceName] = sessionInfo;
+            }
             std::cout << "successfully register service " << serviceName
                       << std::endl;
             return;
@@ -433,7 +455,18 @@ void registerService(const std::string& serviceName)
 
 void deregisterService(const std::string& serviceName)
 {
-    SessionInfo sessionInfo = serviceSessions[serviceName];
+    SessionInfo sessionInfo;
+    {
+        std::lock_guard<std::mutex> lock(serviceSessionsMutex);
+        auto it = serviceSessions.find(serviceName);
+        if (it == serviceSessions.end())
+        {
+            std::cerr << "Service " << serviceName << " is not registered."
+                      << std::endl;
+            return;
+        }
+        sessionInfo = it->second;
+    }
 
     UnregisterReason reason = UnregisterReason::LOGOUT_SESSION;
     auto bus = sdbusplus::bus::new_default();
@@ -454,7 +487,10 @@ void deregisterService(const std::string& serviceName)
         {
             std::cout << "Service " << serviceName
                       << " deregistered successfully for reason: ";
-            serviceSessions.erase(serviceName);
+            {
+                std::lock_guard<std::mutex> lock(serviceSessionsMutex);
+                serviceSessions.erase(serviceName);
+            }
             switch (reason)
             {
                 case UnregisterReason::LOGOUT_SESSION:
