@@ -31,6 +31,7 @@ struct SessionInfo
     uint8_t sessionType;
     uint8_t privilege;
     uint8_t userId;
+    bool pending = false;
 };
 
 std::map<std::string, SessionInfo> serviceSessions;
@@ -265,7 +266,8 @@ void compareSessionInfos(SshSessionInfoType& sshSessionInfos)
                 std::lock_guard<std::mutex> lock(serviceSessionsMutex);
                 for (const auto& serviceEntry : serviceSessions)
                 {
-                    if (serviceEntry.second.sessionId == std::get<0>(entry))
+                    if (!serviceEntry.second.pending &&
+                        serviceEntry.second.sessionId == std::get<0>(entry))
                     {
                         valid = true;
                         serviceName = serviceEntry.first;
@@ -315,7 +317,8 @@ void compareSessionInfos(SshSessionInfoType& sshSessionInfos)
                 std::lock_guard<std::mutex> lock(serviceSessionsMutex);
                 for (const auto& serviceEntry : serviceSessions)
                 {
-                    if (serviceEntry.second.sessionId == std::get<0>(entry))
+                    if (!serviceEntry.second.pending &&
+                        serviceEntry.second.sessionId == std::get<0>(entry))
                     {
                         servicesToStop.push_back(serviceEntry.first);
                     }
@@ -372,10 +375,14 @@ void registerService(const std::string& serviceName)
 
     {
         std::lock_guard<std::mutex> lock(serviceSessionsMutex);
-        if (serviceSessions.find(serviceName) != serviceSessions.end())
+        bool inserted =
+            serviceSessions
+                .try_emplace(serviceName, SessionInfo{.pending = true})
+                .second;
+        if (!inserted)
         {
-            std::cout << "Service " << serviceName
-                      << " is already registered." << std::endl;
+            std::cout << "Service " << serviceName << " is already registered."
+                      << std::endl;
             return;
         }
     }
@@ -450,6 +457,10 @@ void registerService(const std::string& serviceName)
                   << e.what() << std::endl;
     }
 
+    {
+        std::lock_guard<std::mutex> lock(serviceSessionsMutex);
+        serviceSessions.erase(serviceName);
+    }
     return;
 }
 
@@ -459,7 +470,7 @@ void deregisterService(const std::string& serviceName)
     {
         std::lock_guard<std::mutex> lock(serviceSessionsMutex);
         auto it = serviceSessions.find(serviceName);
-        if (it == serviceSessions.end())
+        if (it == serviceSessions.end() || it->second.pending)
         {
             std::cerr << "Service " << serviceName << " is not registered."
                       << std::endl;
