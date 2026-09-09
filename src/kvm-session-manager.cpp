@@ -4,12 +4,17 @@ bool KvmSessionManager::kvmSessionRegister(
     uint8_t sessionId, std::string ipAdress, std::string userName,
     uint8_t sessionType, uint8_t previlage, uint8_t userId)
 {
-    if (sessionId != 0 || sessionType != sessionType::KVM ||
+    if (!isAuthorizedCaller({obmcIkvmExecutable, bmcwebExecutable}) ||
+        sessionId != 0 || sessionType != sessionType::KVM ||
         (validPriv.find(previlage) == validPriv.end()))
     {
         return false;
     }
 
+    if (uid == maxSessionId)
+    {
+        return false;
+    }
     uid++;
     kvmInfo newSession;
     newSession = std::make_tuple(uid, ipAdress, userName, sessionType,
@@ -24,7 +29,8 @@ bool KvmSessionManager::kvmSessionUnregister(
     uint8_t sessionId, uint8_t sessionType, uint8_t reason)
 {
     bool status = false;
-    if (reasonUnregister.find(reason) == reasonUnregister.end() ||
+    if (!isAuthorizedCaller({obmcIkvmExecutable, bmcwebExecutable}) ||
+        reasonUnregister.find(reason) == reasonUnregister.end() ||
         sessionType != sessionType::KVM)
     {
         return status;
