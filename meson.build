@@ -36,6 +36,7 @@ executable(
   'src/vmedia-session-manager.cpp',
   'src/ssh-session-manager.cpp',
   include_directories: ['include'],
+  cpp_args: ['-DSESSION_MANAGER_TESTS'],
   dependencies: deps,
   install: true,
 )
