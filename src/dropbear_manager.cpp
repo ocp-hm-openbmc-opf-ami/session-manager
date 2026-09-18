@@ -377,7 +377,14 @@ void registerService(const std::string& serviceName)
         std::lock_guard<std::mutex> lock(serviceSessionsMutex);
         bool inserted =
             serviceSessions
-                .try_emplace(serviceName, SessionInfo{.pending = true})
+                .try_emplace(serviceName,
+                             SessionInfo{.sessionId = 0,
+                                         .ipAddress = "",
+                                         .username = "",
+                                         .sessionType = 0,
+                                         .privilege = 0,
+                                         .userId = 0,
+                                         .pending = true})
                 .second;
         if (!inserted)
         {
