@@ -4,12 +4,17 @@ bool WebSessionManager::webSessionRegister(
     uint8_t sessionId, std::string ipAdress, std::string userName,
     uint8_t sessionType, uint8_t previlage, uint8_t userId)
 {
-    if (sessionId != 0 || sessionType != sessionType::WEB ||
+    if (!isAuthorizedCaller({bmcwebExecutable}) || sessionId != 0 ||
+        sessionType != sessionType::WEB ||
         (validPriv.find(previlage) == validPriv.end()))
     {
         return false;
     }
 
+    if (uid == maxSessionId)
+    {
+        return false;
+    }
     uid++;
     webInfo newSession;
     newSession = std::make_tuple(uid, ipAdress, userName, sessionType,
@@ -24,7 +29,8 @@ bool WebSessionManager::webSessionUnregister(
     uint8_t sessionId, uint8_t sessionType, uint8_t reason)
 {
     bool status = false;
-    if (reasonUnregister.find(reason) == reasonUnregister.end() ||
+    if (!isAuthorizedCaller({bmcwebExecutable}) ||
+        reasonUnregister.find(reason) == reasonUnregister.end() ||
         sessionType != sessionType::WEB)
     {
         return status;

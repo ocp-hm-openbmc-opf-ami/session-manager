@@ -5,12 +5,17 @@ bool VmediaSessionManager::vmediaSessionRegister(
     uint8_t sessionType, uint8_t previlage, uint8_t userId,
     std::string mountType, std::string slotId)
 {
-    if (sessionId != 0 || sessionType != sessionType::VMEDIA ||
+    if (!isAuthorizedCaller({virtualMediaExecutable, bmcwebExecutable}) ||
+        sessionId != 0 || sessionType != sessionType::VMEDIA ||
         (validPriv.find(previlage) == validPriv.end()))
     {
         return false;
     }
 
+    if (uid == maxSessionId)
+    {
+        return false;
+    }
     uid++;
     vmediaInfo newSession;
     newSession = std::make_tuple(uid, ipAdress, userName, sessionType,
@@ -24,7 +29,8 @@ bool VmediaSessionManager::vmediaSessionRegister(
 bool VmediaSessionManager::vmediaSessionUnregister(
     uint8_t sessionId, uint8_t sessionType, uint8_t reason)
 {
-    if (sessionType != sessionType::VMEDIA)
+    if (!isAuthorizedCaller({virtualMediaExecutable, bmcwebExecutable}) ||
+        sessionType != sessionType::VMEDIA)
     {
         return false;
     }
