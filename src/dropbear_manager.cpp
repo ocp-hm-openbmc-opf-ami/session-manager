@@ -98,6 +98,30 @@ bool stopService(const std::string& serviceName)
     }
 }
 
+void eventLogSupport(const std::string& msg)
+{
+    constexpr auto eventLogService = "xyz.openbmc_project.Logging";
+    constexpr auto eventLogObjPath = "/xyz/openbmc_project/logging";
+    constexpr auto eventLogIface = "xyz.openbmc_project.Logging.Create";
+    constexpr auto eventLogSeverity =
+        "xyz.openbmc_project.Logging.Entry.Level.Informational";
+    std::map<std::string, std::string> additionalData;
+
+    try
+    {
+        auto bus = sdbusplus::bus::new_default();
+        auto method = bus.new_method_call(eventLogService, eventLogObjPath,
+                                          eventLogIface, "Create");
+        method.append(msg, eventLogSeverity, additionalData);
+        bus.call(method);
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "eventLogSupport: Failed to create event log: " << e.what()
+                  << std::endl;
+    }
+}
+
 std::string extractClientIP(const std::string& serviceName)
 {
     std::regex ipRegex(
@@ -450,6 +474,8 @@ void registerService(const std::string& serviceName)
             }
             std::cout << "successfully register service " << serviceName
                       << std::endl;
+            eventLogSupport("AmiOneTree.1.0.SshLogin," + sessionInfo.username +
+                            "," + sessionInfo.ipAddress);
             return;
         }
         else
@@ -521,6 +547,8 @@ void deregisterService(const std::string& serviceName)
                     std::cout << "Session terminated unexpectedly" << std::endl;
                     break;
             }
+            eventLogSupport("AmiOneTree.1.0.SshLogout," + sessionInfo.username +
+                            "," + sessionInfo.ipAddress);
             return;
         }
     }
