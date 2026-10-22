@@ -11,10 +11,22 @@ project(
   meson_version: '>=1.1.1',
 )
 
+
+if get_option('tests').enabled()
+    sdbusplus = subproject('sdbusplus').get_variable('sdbusplus_dep')
+    meson.override_dependency('sdbusplus',sdbusplus)
+    phosphor_dbus_interfaces= dependency('phosphor-dbus-interfaces-ami')
+    phosphor_logging_dep = subproject('phosphor-logging').get_variable('phosphor_logging_dep')
+    subdir('tests')
+else
+    sdbusplus = dependency('sdbusplus')
+    phosphor_logging_dep = dependency('phosphor-logging')
+endif
+
 deps = [
   dependency('systemd'),
-  dependency('sdbusplus'),
-  dependency('phosphor-logging'),
+  sdbusplus,
+  phosphor_logging_dep,
 ]
 systemd = dependency('systemd')
 install_data(
