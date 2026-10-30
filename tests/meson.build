@@ -50,6 +50,7 @@ unit_test_exe = executable(
         'test_vmedia_session_manager.cpp',
     ] + production_sources,
     include_directories: include_directories('..', '../include'),
+    cpp_args: ['-DSESSION_MANAGER_TESTS'],
     dependencies: common_test_deps,
 )
 
